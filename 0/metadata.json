@@ -1,0 +1,58 @@
+{
+  "cli_version": "0.10.2",
+  "checkpoint_id": "01M649RXD7RQXD3WTF4MZZ21CC",
+  "session_id": "01a18858-2263-77c3-a4d6-66cebf963931",
+  "strategy": "manual-commit",
+  "created_at": "2026-10-29T17:01:59.582189465Z",
+  "branch": "fix/windows-detached-worker-console",
+  "checkpoints_count": 1,
+  "files_touched": [
+    "cmd/entire/cli/execx/execx_unix.go",
+    "cmd/entire/cli/execx/execx_windows.go",
+    "cmd/entire/cli/execx/spawn_detached.go",
+    "cmd/entire/cli/execx/spawn_detached_windows_test.go",
+    "docs/development/git-safety.md"
+  ],
+  "agent": "Codex",
+  "model": "gpt-6.1-terra",
+  "turn_id": "042140b4fc26",
+  "compact_transcript_start": 0,
+  "token_usage": {
+    "input_tokens": 227568,
+    "cache_creation_tokens": 0,
+    "cache_read_tokens": 32595712,
+    "output_tokens": 31182,
+    "api_call_count": 252
+  },
+  "initial_attribution": {
+    "calculated_at": "2026-10-29T17:01:59.44651235Z",
+    "agent_lines": 0,
+    "agent_removed": 0,
+    "human_added": 0,
+    "human_modified": 0,
+    "human_removed": 2,
+    "total_committed": 0,
+    "total_lines_changed": 2,
+    "agent_percentage": 0,
+    "metric_version": 2
+  },
+  "prompt_attributions": [
+    {
+      "checkpoint_number": 1,
+      "user_lines_added": 69,
+      "user_lines_removed": 2,
+      "agent_lines_added": 0,
+      "agent_lines_removed": 0,
+      "user_added_per_file": {
+        "cmd/entire/cli/execx/execx_unix.go": 4,
+        "cmd/entire/cli/execx/execx_windows.go": 9,
+        "cmd/entire/cli/execx/spawn_detached.go": 3,
+        "cmd/entire/cli/execx/spawn_detached_windows_test.go": 48,
+        "docs/development/git-safety.md": 5
+      },
+      "user_removed_per_file": {
+        "cmd/entire/cli/execx/spawn_detached.go": 2
+      }
+    }
+  ]
+}
