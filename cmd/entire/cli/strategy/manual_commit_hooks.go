@@ -73,11 +73,35 @@ const confirmPromptTimeout = 15 * time.Second
 // errPromptTimedOut reports that readPromptAnswer gave up waiting.
 var errPromptTimedOut = errors.New("no answer before the prompt timed out")
 
-// readPromptAnswer reads one line from r, giving up after timeout. A read
-// still blocked when it gives up is left behind: the caller's terminal Close
-// releases it (see interactive.PromptTTY.Close), and the hook process exits
-// right after.
+// readPromptAnswer reads one line from r, giving up after timeout. A terminal
+// that takes a read deadline is read with one, and one that can wait for input
+// (macOS /dev/tty) is read only once input arrives, so giving up leaves nothing
+// reading it: the hook may go on to prompt again (a git credential prompt
+// during the upload), and a leftover read would take that line. Otherwise a
+// read still blocked when it gives up is left behind, and the caller's
+// terminal Close releases it (see interactive.PromptTTY.Close).
 func readPromptAnswer(r io.Reader, timeout time.Duration) (string, error) {
+	if d, ok := r.(interface{ SetReadDeadline(t time.Time) error }); ok {
+		if err := d.SetReadDeadline(time.Now().Add(timeout)); err == nil {
+			line, err := bufio.NewReader(r).ReadString('\n')
+			_ = d.SetReadDeadline(time.Time{}) //nolint:errcheck // the deadline was just set on the same handle
+			if errors.Is(err, os.ErrDeadlineExceeded) {
+				return "", errPromptTimedOut
+			}
+			return line, err //nolint:wrapcheck // callers distinguish errPromptTimedOut and treat other errors as no answer
+		}
+	}
+	if w, ok := r.(interface {
+		WaitForInput(timeout time.Duration) (bool, error)
+	}); ok {
+		if ready, err := w.WaitForInput(timeout); err == nil {
+			if !ready {
+				return "", errPromptTimedOut
+			}
+			// The terminal is line-buffered, so input ready to read is a whole line.
+			return bufio.NewReader(r).ReadString('\n') //nolint:wrapcheck // as above
+		}
+	}
 	type answer struct {
 		line string
 		err  error

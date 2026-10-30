@@ -46,7 +46,7 @@ import (
 // re-read as the entry it names, which keeps its first position.
 // Records carry no redaction: redact the transcript before feeding it.
 type PiAdapter struct {
-	pending []byte // bytes after the last newline fed
+	pending []byte // bytes after the last newline fed; see piPendingKeep
 	line    int    // source lines consumed so far
 
 	parent   map[string]string // every entry's parentId
@@ -74,6 +74,11 @@ type PiAdapter struct {
 	// reconcile for a message under an entry it forgot.
 	above map[string]bool
 }
+
+// piPendingKeep is the most capacity Feed keeps in pending once a line it
+// held is read: a longer line's buffer is let go rather than kept for the
+// adapter's lifetime.
+const piPendingKeep = 1 << 20
 
 // piMessage is one decoded message entry, with what reconcile needs of it
 // worked out once.
@@ -130,7 +135,11 @@ func (a *PiAdapter) Feed(chunk []byte) []Record {
 			line = a.pending
 		}
 		out = a.consumeLine(line, out)
-		a.pending = a.pending[:0]
+		if cap(a.pending) > piPendingKeep {
+			a.pending = nil
+		} else {
+			a.pending = a.pending[:0]
+		}
 		chunk = chunk[i+1:]
 	}
 	return out
@@ -287,21 +296,37 @@ func piDecodeMessage(e pijsonl.Entry) *piMessage {
 		m.entry.Message.Content = nil // only the call ID and result are needed
 		m.empty = true
 	case pijsonl.RoleAssistant:
-		var items []pijsonl.ContentItem
-		if pijsonl.DecodeStringContent(e.Message.Content) == "" && json.Unmarshal(e.Message.Content, &items) == nil {
-			for _, it := range items {
-				if it.Type == piContentTypeToolCall {
-					m.calls = append(m.calls, it.ID)
-				}
-			}
-		}
-		_, ok := piRecord(e, nil)
-		m.empty = !ok
+		var visible bool
+		m.calls, visible = piAssistantCalls(e.Message.Content)
+		m.empty = !visible && !piUsageHasCounts(piCallUsage(e.Message))
 	default:
 		_, ok := piRecord(e, nil)
 		m.empty = !ok
 	}
 	return m
+}
+
+// piAssistantCalls reads assistant content once for its tool call IDs, and
+// whether piEmitAssistantContent gives it a block, without decoding the
+// calls' arguments.
+func piAssistantCalls(raw json.RawMessage) (calls []string, visible bool) {
+	if pijsonl.DecodeStringContent(raw) != "" {
+		return nil, true
+	}
+	var items []pijsonl.ContentItem
+	if json.Unmarshal(raw, &items) != nil {
+		return nil, false
+	}
+	for _, it := range items {
+		switch it.Type {
+		case pijsonl.ContentTypeText:
+			visible = visible || it.Text != ""
+		case piContentTypeToolCall:
+			calls = append(calls, it.ID)
+			visible = true
+		}
+	}
+	return calls, visible
 }
 
 // reconcile sends what changed on the active branch: drops for messages

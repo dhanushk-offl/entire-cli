@@ -217,6 +217,58 @@ func TestPiAdapter_GeneratedTrees(t *testing.T) {
 	}
 }
 
+// piDecodeMessage works out emptiness without building the record: it must
+// agree with piRecord on the edge cases below and every message the
+// generator writes.
+func TestPiDecodeMessage_EmptyAgreesWithRecord(t *testing.T) {
+	t.Parallel()
+	assistant := func(content string) string {
+		return `{"type":"message","id":"a","parentId":null,"timestamp":"t","message":{"role":"assistant","content":` + content + `}}`
+	}
+	lines := []string{
+		assistant(`""`),
+		assistant(`"plain"`),
+		assistant(`[]`),
+		assistant(`[{"type":"text","text":""}]`),
+		assistant(`[{"type":"thinking","thinking":"x"}]`),
+		assistant(`[{"type":"text","text":""},{"type":"toolCall","id":"c1","name":"read"}]`),
+		assistant(`[{"type":"toolCall","name":"read"}]`),
+		assistant(`{"not":"blocks"}`),
+		piEmptyAssistant("a", ""),
+		piUsageOnly("a", ""),
+	}
+	for seed := range uint64(200) {
+		lines = append(lines, strings.Split(string(piGeneratedTree(rand.New(rand.NewPCG(seed, 7)))), "\n")...)
+	}
+	for _, l := range lines {
+		e, ok := piDecodeEntry([]byte(l))
+		if !ok || e.Type != pijsonl.EntryTypeMessage {
+			continue
+		}
+		_, has := piRecord(e, nil)
+		if got := piDecodeMessage(e).empty; got != !has {
+			t.Fatalf("empty = %v, piRecord ok = %v, for %s", got, has, l)
+		}
+	}
+}
+
+func TestPiAdapter_LongPendingLineIsReleased(t *testing.T) {
+	t.Parallel()
+	long := piUser("u1", "", strings.Repeat("x", 2*piPendingKeep))
+	a := NewPiAdapter()
+	a.Feed([]byte(piHdr + "\n" + long[:len(long)/2]))
+	a.Feed([]byte(long[len(long)/2:] + "\n"))
+	if c := cap(a.pending); c > piPendingKeep {
+		t.Fatalf("pending keeps %d bytes after the long line was read", c)
+	}
+	short := piUser("u2", "u1", "y")
+	a.Feed([]byte(short[:10]))
+	a.Feed([]byte(short[10:] + "\n"))
+	if c := cap(a.pending); c == 0 {
+		t.Fatal("pending let a short line's buffer go")
+	}
+}
+
 func piGeneratedTree(rng *rand.Rand) []byte {
 	ls := []string{piHdr}
 	var ids, calls []string
